@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Gráficos - Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:linear-gradient(135deg,#434343 0%,#000 100%);color:#333;min-height:100vh;}
+  .navbar{background: rgba(255,255,255,0.95);backdrop-filter: blur(10px);padding:1rem 0;box-shadow:0 2px 10px rgba(0,0,0,0.1);}
+  .nav-content{max-width:1200px;margin:0 auto;padding:0 2rem;display:flex;justify-content:space-between;align-items:center;}
+  .nav-content h1{color:#667eea;font-size:1.5rem;}
+  .nav-links{display:flex;gap:1rem;}
+  .nav-links a, .nav-links button{color:#555;text-decoration:none;padding:0.5rem 1rem;border-radius:5px;background:transparent;border:none;cursor:pointer;transition:0.3s;}
+  .nav-links a:hover, .nav-links button:hover{background:#764ba2;color:white;}
+  .container{max-width:1200px;margin:2rem auto;padding:0 1rem;}
+  .cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;margin-bottom:2rem;}
+  .summary-card{background:white;border-radius:15px;padding:1.5rem;text-align:center;box-shadow:0 5px 20px rgba(0,0,0,0.1);cursor:pointer;transition:0.2s;}
+  .summary-card:hover{transform:translateY(-5px);box-shadow:0 8px 25px rgba(0,0,0,0.2);}
+  .summary-card h2{font-size:1.5rem;color:#667eea;}
+  .charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:2rem;}
+  .chart-card{background:white;border-radius:15px;padding:1.5rem;box-shadow:0 5px 20px rgba(0,0,0,0.1);}
+  .chart-card h4{margin-bottom:1rem;color:#667eea;}
+  .chart-card canvas{width:100% !important;height:auto !important;}
+  .logo-container{display:flex;align-items:center;}
+  .logo{height:50px;margin-right:1rem;border-radius:10px;}
+  @media(max-width:768px){.nav-content{flex-direction:column;align-items:flex-start;}.nav-links{flex-direction:column;width:100%;}.nav-links a,.nav-links button{width:100%;text-align:left;padding:0.8rem 1rem;}.charts-grid{grid-template-columns:1fr;}.chart-card{padding:1rem;}.logo{height:40px;}}
+
+  /* Modal */
+  #modalDetalhes{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);justify-content:center;align-items:center;z-index:999;}
+  #modalConteudo{background:white;padding:2rem;border-radius:10px;max-width:600px;width:90%;max-height:80%;overflow-y:auto;position:relative;}
+  #modalConteudo button{position:absolute;top:10px;right:10px;background:#e74c3c;color:white;border:none;padding:0.3rem 0.6rem;border-radius:5px;cursor:pointer;}
+  #listaDetalhes li{padding:0.5rem 0;border-bottom:1px solid #ccc;}
+  #listaDetalhes li span.status{font-weight:bold;}
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="nav-content">
+    <div class="logo-container">
+      <img src="PHOTO-2025-10-23-15-30-45.jpg" alt="Logo" class="logo">
+    </div>
+    <h1>Sistema de Contratos - Admin</h1>
+    <div class="nav-links">
+      <a href="index.html">Área do Cliente</a>
+      <a href="index.html">Contratos</a>
+      <a href="#">Gráficos</a>
+      <button onclick="logoutAdmin()">Sair</button>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <h2>Dashboard de Gráficos</h2>
+  <p class="subtitle">Visualize os contratos e faturamento da Fly Mídia</p>
+
+  <div class="cards-grid">
+    <div class="summary-card" id="cardTotal"><h2 id="totalContratos">0</h2><h3>Total de Contratos</h3></div>
+    <div class="summary-card" id="cardFaturamento"><h2 id="totalFaturamento">R$0,00</h2><h3>Faturamento Total</h3></div>
+    <div class="summary-card" id="cardPendentes"><h2 id="pendentes">0</h2><h3>Pendentes</h3></div>
+    <div class="summary-card" id="cardVencidos"><h2 id="vencidos">0</h2><h3>Vencidos</h3></div>
+  </div>
+
+  <div class="charts-grid">
+    <div class="chart-card"><h4>Status de Pagamento</h4><canvas id="chartStatus"></canvas></div>
+    <div class="chart-card"><h4>Contratos por Cidade</h4><canvas id="chartCidades"></canvas></div>
+    <div class="chart-card"><h4>Faturamento por Cidade</h4><canvas id="chartFaturamento"></canvas></div>
+    <div class="chart-card"><h4>Evolução Mensal do Faturamento</h4><canvas id="chartEvolucao"></canvas></div>
+  </div>
+</div>
+
+<!-- Modal de Detalhes -->
+<div id="modalDetalhes">
+  <div id="modalConteudo">
+    <button onclick="fecharModal()">✖</button>
+    <h3 id="modalTitulo"></h3>
+    <ul id="listaDetalhes"></ul>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyBn58dQwxfp-WAIpU3jcGQJ1ZFhs7AHjTk",
+    authDomain: "flymidia-ccd8f.firebaseapp.com",
+    projectId: "flymidia-ccd8f",
+    storageBucket: "flymidia-ccd8f.firebasestorage.app",
+    messagingSenderId: "79513987797",
+    appId: "1:79513987797:web:1f3854bcaaf4500001d05c",
+    measurementId: "G-S89Y3ZTEG6"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+function formatarValor(v){
+    return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
+}
+function logoutAdmin(){
+    auth.signOut().then(()=>location.href='index.html');
+}
+
+function abrirModal(titulo, contratos){
+    const modal = document.getElementById('modalDetalhes');
+    const lista = document.getElementById('listaDetalhes');
+    const modalTitulo = document.getElementById('modalTitulo');
+
+    modalTitulo.textContent = titulo;
+    lista.innerHTML = '';
+
+    contratos.forEach(c=>{
+        const nomeCliente = c.nome_cliente || c.nome || c.nome_empresa || 'Sem nome';
+        const cidade = c.cidade || 'Sem cidade';
+        const valor = formatarValor(parseFloat(c.valor_contrato)||0);
+        const vencimento = new Date(c.data_vencimento).toLocaleDateString('pt-BR');
+
+        const hoje = new Date();
+        let statusText, statusColor;
+        if(c.status_pagamento){
+            statusText = 'Pago'; statusColor='green';
+        } else if(new Date(c.data_vencimento) < hoje){
+            statusText = 'Vencido'; statusColor='red';
+        } else {
+            statusText = 'Pendente'; statusColor='orange';
+        }
+
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${nomeCliente} - ${cidade} - ${valor} - Vencimento: ${vencimento} - <span class="status" style="color:${statusColor}">${statusText}</span></span>`;
+        lista.appendChild(li);
+    });
+
+    modal.style.display='flex';
+}
+
+function fecharModal(){document.getElementById('modalDetalhes').style.display='none';}
+
+async function carregarDashboard(){
+    const snapshot = await db.collection("contratos").get();
+    const docs = [];
+    snapshot.forEach(d=>docs.push(d.data()));
+
+    const totalContratos = docs.length;
+    let totalFaturamento=0,pendentes=0,vencidos=0;
+    const hoje=new Date();
+
+    docs.forEach(d=>{
+        totalFaturamento += parseFloat(d.valor_contrato)||0;
+        if(!d.status_pagamento){
+            const venc = new Date(d.data_vencimento);
+            if(venc < hoje) vencidos++; else pendentes++;
+        }
+    });
+
+    document.getElementById('totalContratos').textContent = totalContratos;
+    document.getElementById('totalFaturamento').textContent = formatarValor(totalFaturamento);
+    document.getElementById('pendentes').textContent = pendentes;
+    document.getElementById('vencidos').textContent = vencidos;
+
+    const pagos = docs.filter(d=>d.status_pagamento).length;
+
+    // Gráfico Status
+    new Chart(document.getElementById('chartStatus').getContext('2d'),{
+        type:'pie',
+        data:{labels:['Pago','Pendente','Vencido'],datasets:[{data:[pagos,pendentes,vencidos],backgroundColor:['#2ecc71','#f1c40f','#e74c3c']}]},
+        options:{responsive:true}
+    });
+
+    // Contratos por Cidade
+    const byCity={};
+    docs.forEach(d=>{const city=d.cidade||'Sem cidade'; byCity[city]=(byCity[city]||0)+1;});
+    new Chart(document.getElementById('chartCidades').getContext('2d'),{
+        type:'bar',
+        data:{labels:Object.keys(byCity), datasets:[{label:'Contratos por Cidade', data:Object.values(byCity), backgroundColor:'#667eea'}]},
+        options:{responsive:true}
+    });
+
+    // Faturamento por Cidade
+    const revenueCity={};
+    docs.forEach(d=>{const city=d.cidade||'Sem cidade'; revenueCity[city]=(revenueCity[city]||0)+(parseFloat(d.valor_contrato)||0);});
+    new Chart(document.getElementById('chartFaturamento').getContext('2d'),{
+        type:'bar',
+        data:{labels:Object.keys(revenueCity), datasets:[{label:'Faturamento por Cidade (R$)', data:Object.values(revenueCity), backgroundColor:'#2ecc71'}]},
+        options:{responsive:true}
+    });
+
+    // Evolução Mensal
+    const meses={};
+    docs.forEach(d=>{
+        const dt=new Date(d.data_vencimento);
+        const key = `${dt.getFullYear()}-${(dt.getMonth()+1).toString().padStart(2,'0')}`;
+        meses[key] = (meses[key]||0) + (parseFloat(d.valor_contrato)||0);
+    });
+    const keysOrdenadas = Object.keys(meses).sort();
+    new Chart(document.getElementById('chartEvolucao').getContext('2d'),{
+        type:'line',
+        data:{labels:keysOrdenadas, datasets:[{label:'Faturamento Mensal', data:keysOrdenadas.map(k=>meses[k]), backgroundColor:'rgba(102,126,234,0.2)', borderColor:'#667eea', fill:true}]},
+        options:{responsive:true}
+    });
+
+    // Eventos dos cards
+    document.getElementById('cardPendentes').addEventListener('click',()=>{ 
+        const listaPendentes = docs.filter(d=>!d.status_pagamento && new Date(d.data_vencimento)>=hoje);
+        abrirModal('Contratos Pendentes', listaPendentes);
+    });
+    document.getElementById('cardVencidos').addEventListener('click',()=>{ 
+        const listaVencidos = docs.filter(d=>!d.status_pagamento && new Date(d.data_vencimento)<hoje);
+        abrirModal('Contratos Vencidos', listaVencidos);
+    });
+    document.getElementById('cardTotal').addEventListener('click',()=>{ 
+        abrirModal('Todos os Contratos', docs);
+    });
+}
+
+window.addEventListener('DOMContentLoaded', carregarDashboard);
+</script>
+
+</body>
+</html>
